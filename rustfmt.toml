@@ -1,0 +1,25 @@
+hard_tabs = true
+newline_style = "Unix"
+
+unstable_features = true
+
+# Unstable features.
+array_width = 0
+attr_fn_like_width = 0
+comment_width = 100
+error_on_line_overflow = true
+fn_call_width = 100
+force_multiline_blocks = true
+group_imports = "StdExternalCrate"
+imports_granularity = "Item"
+imports_layout = "Horizontal"
+inline_attribute_width = 0
+max_width = 100
+short_array_element_width_threshold = 0
+single_line_if_else_max_width = 0
+single_line_let_else_max_width = 0
+struct_lit_single_line = false
+struct_lit_width = 0
+struct_variant_width = 0
+use_small_heuristics = "Off"
+wrap_comments = true
