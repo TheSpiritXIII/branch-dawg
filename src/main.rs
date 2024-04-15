@@ -32,13 +32,16 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
 	/// Lists all tracked branches.
-	List(ListArgs),
+	List(CommonArgs),
 }
 
 #[derive(Args)]
-struct ListArgs {
+struct CommonArgs {
 	/// The path to the Git repository, or the current path if none is provided.
 	path: Option<String>,
+
+	/// The default branch, or `main` if none is provided.
+	default_branch: Option<String>,
 }
 
 fn main() {
@@ -54,9 +57,17 @@ fn main() {
 					return;
 				}
 			};
+
+			let branch_default_name = args.default_branch.unwrap_or("main".to_owned());
+
 			match list_branches(&repo) {
 				Ok(branches) => {
 					for name in branches {
+						if name == branch_default_name {
+							print!("* ")
+						} else {
+							print!("  ")
+						}
 						println!("{name}");
 					}
 				}
