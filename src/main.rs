@@ -19,6 +19,7 @@ use clap::Parser;
 use clap::Subcommand;
 use git2::BranchType;
 use git2::Repository;
+use thiserror::Error;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -53,38 +54,37 @@ fn main() {
 					return;
 				}
 			};
-			let branches = match repo.branches(Some(BranchType::Local)) {
-				Ok(b) => b,
-				Err(e) => {
-					println!("unable to list branches: {}", e.message());
-					return;
+			match list_branches(&repo) {
+				Ok(branches) => {
+					for name in branches {
+						println!("{name}");
+					}
 				}
-			};
-			for branch in branches {
-				let b = match branch {
-					Ok(b) => b.0,
-					Err(e) => {
-						println!("unable to list branches: {}", e.message());
-						return;
-					}
-				};
-				let name = match b.name() {
-					Ok(n) => {
-						match n {
-							Some(n) => n,
-							None => {
-								println!("branch has invalid name");
-								return;
-							}
-						}
-					}
-					Err(e) => {
-						println!("unable to retrieve branch name: {}", e.message());
-						return;
-					}
-				};
-				println!("{name}");
+				Err(e) => {
+					eprintln!("{}", e)
+				}
 			}
 		}
 	}
+}
+
+#[derive(Error, Debug)]
+pub enum CliError {
+	#[error("Git: {}", .0.message())]
+	Git(#[from] git2::Error),
+
+	#[error("Unable to convert UTF-8 at index {}", .0.valid_up_to())]
+	Utf8Error(#[from] std::str::Utf8Error),
+}
+
+fn list_branches(repo: &git2::Repository) -> Result<Vec<String>, CliError> {
+	repo.branches(Some(BranchType::Local))?
+		.map(|branch_result| {
+			branch_result.map_err(CliError::from).and_then(|branch| {
+				return branch.0.name_bytes().map_err(CliError::from).and_then(|name| {
+					std::str::from_utf8(name).map_err(CliError::from).map(str::to_owned)
+				});
+			})
+		})
+		.collect()
 }
