@@ -70,7 +70,9 @@ fn main() {
 			let branch_default_name = args.default_branch.unwrap_or("main".to_owned());
 
 			match list_branches(&repo) {
-				Ok(branches) => {
+				Ok(mut branches) => {
+					// TODO(TheSpiritXIII): natural sorting.
+					branches.sort();
 					for name in branches {
 						if name == branch_default_name {
 							write!(stdout, "* ").unwrap();
