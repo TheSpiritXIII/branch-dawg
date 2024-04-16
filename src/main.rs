@@ -14,6 +14,8 @@
 //!
 //! This outputs all local branches.
 
+#![warn(clippy::pedantic)]
+
 use std::io::Write;
 
 use clap::Args;
@@ -67,10 +69,10 @@ impl CommonArgs {
 			Ok(name.clone())
 		} else {
 			let config_default = config.get_str("init.defaultBranch")?;
-			if !config_default.is_empty() {
-				Ok(config_default.to_owned())
-			} else {
+			if config_default.is_empty() {
 				Ok("main".to_owned())
+			} else {
+				Ok(config_default.to_owned())
 			}
 		}
 	}
@@ -123,7 +125,7 @@ fn main() {
 					}
 				}
 				Err(e) => {
-					eprintln!("{}", e)
+					eprintln!("{e}");
 				}
 			}
 		}
