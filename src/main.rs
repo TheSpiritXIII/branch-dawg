@@ -93,34 +93,26 @@ fn main() {
 				}
 			};
 
-			let config = match git_utils::config_open(args.path()) {
+			let branch_current = match git_utils::branch_current(&repo) {
 				Ok(config) => config,
 				Err(e) => {
-					eprintln!("unable to open config: {}", e.message());
+					eprintln!("unable to retrieve current branch: {}", e.message());
 					return;
 				}
 			};
 
-			let branch_default_name = match args.branch_default_name(&config) {
-				Ok(config) => config,
-				Err(e) => {
-					eprintln!("unable to retrieve default branch: {}", e.message());
-					return;
-				}
-			};
-
-			match git_utils::list_branches(&repo) {
+			match git_utils::branches(&repo) {
 				Ok(mut branches) => {
 					// TODO(TheSpiritXIII): natural sorting.
 					branches.sort();
-					for name in branches {
-						if name == branch_default_name {
+					for branch in branches {
+						if branch_current.is_some() && branch_current.unwrap() == branch.oid {
 							write!(stdout, "* ").unwrap();
 							stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap();
 						} else {
 							write!(stdout, "  ").unwrap();
 						}
-						writeln!(stdout, "{name}").unwrap();
+						writeln!(stdout, "{}", branch.name).unwrap();
 						stdout.reset().unwrap();
 					}
 				}
