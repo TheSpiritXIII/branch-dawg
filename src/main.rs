@@ -14,11 +14,18 @@
 //!
 //! This outputs all local branches.
 
+use std::io::Write;
+
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
 use git2::BranchType;
 use git2::Repository;
+use termcolor::Color;
+use termcolor::ColorChoice;
+use termcolor::ColorSpec;
+use termcolor::StandardStream;
+use termcolor::WriteColor;
 use thiserror::Error;
 
 #[derive(Parser)]
@@ -47,6 +54,8 @@ struct CommonArgs {
 fn main() {
 	let cli = Cli::parse();
 
+	let mut stdout = StandardStream::stdout(ColorChoice::Always);
+
 	match cli.command {
 		Commands::List(args) => {
 			let path = args.path.unwrap_or(String::new());
@@ -64,11 +73,13 @@ fn main() {
 				Ok(branches) => {
 					for name in branches {
 						if name == branch_default_name {
-							print!("* ")
+							write!(stdout, "* ").unwrap();
+							stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap();
 						} else {
-							print!("  ")
+							write!(stdout, "  ").unwrap();
 						}
-						println!("{name}");
+						writeln!(stdout, "{name}").unwrap();
+						stdout.reset().unwrap();
 					}
 				}
 				Err(e) => {
