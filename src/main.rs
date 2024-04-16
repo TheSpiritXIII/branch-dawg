@@ -19,14 +19,16 @@ use std::io::Write;
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
-use git2::BranchType;
+use git2::Config;
 use git2::Repository;
 use termcolor::Color;
 use termcolor::ColorChoice;
 use termcolor::ColorSpec;
 use termcolor::StandardStream;
 use termcolor::WriteColor;
-use thiserror::Error;
+
+mod error;
+mod git_utils;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -51,6 +53,29 @@ struct CommonArgs {
 	default_branch: Option<String>,
 }
 
+impl CommonArgs {
+	fn path(&self) -> &str {
+		self.path.as_deref().unwrap_or("./")
+	}
+
+	fn repository(&self) -> Result<Repository, git2::Error> {
+		Repository::open(self.path())
+	}
+
+	fn branch_default_name(&self, config: &Config) -> Result<String, git2::Error> {
+		if let Some(name) = &self.default_branch {
+			Ok(name.clone())
+		} else {
+			let config_default = config.get_str("init.defaultBranch")?;
+			if !config_default.is_empty() {
+				Ok(config_default.to_owned())
+			} else {
+				Ok("main".to_owned())
+			}
+		}
+	}
+}
+
 fn main() {
 	let cli = Cli::parse();
 
@@ -58,18 +83,31 @@ fn main() {
 
 	match cli.command {
 		Commands::List(args) => {
-			let path = args.path.unwrap_or(String::new());
-			let repo = match Repository::open(path) {
-				Ok(r) => r,
+			let repo = match args.repository() {
+				Ok(repo) => repo,
 				Err(e) => {
-					println!("unable to open repository: {}", e.message());
+					eprintln!("unable to open repository: {}", e.message());
 					return;
 				}
 			};
 
-			let branch_default_name = args.default_branch.unwrap_or("main".to_owned());
+			let config = match git_utils::config_open(args.path()) {
+				Ok(config) => config,
+				Err(e) => {
+					eprintln!("unable to open config: {}", e.message());
+					return;
+				}
+			};
 
-			match list_branches(&repo) {
+			let branch_default_name = match args.branch_default_name(&config) {
+				Ok(config) => config,
+				Err(e) => {
+					eprintln!("unable to retrieve default branch: {}", e.message());
+					return;
+				}
+			};
+
+			match git_utils::list_branches(&repo) {
 				Ok(mut branches) => {
 					// TODO(TheSpiritXIII): natural sorting.
 					branches.sort();
@@ -90,25 +128,4 @@ fn main() {
 			}
 		}
 	}
-}
-
-#[derive(Error, Debug)]
-pub enum CliError {
-	#[error("Git: {}", .0.message())]
-	Git(#[from] git2::Error),
-
-	#[error("Unable to convert UTF-8 at index {}", .0.valid_up_to())]
-	Utf8Error(#[from] std::str::Utf8Error),
-}
-
-fn list_branches(repo: &git2::Repository) -> Result<Vec<String>, CliError> {
-	repo.branches(Some(BranchType::Local))?
-		.map(|branch_result| {
-			branch_result.map_err(CliError::from).and_then(|branch| {
-				return branch.0.name_bytes().map_err(CliError::from).and_then(|name| {
-					std::str::from_utf8(name).map_err(CliError::from).map(str::to_owned)
-				});
-			})
-		})
-		.collect()
 }
