@@ -23,6 +23,7 @@ use std::process::exit;
 use clap::Args;
 use clap::Parser;
 use clap::Subcommand;
+use git2::BranchType;
 use git2::Config;
 use git2::Repository;
 use termcolor::Color;
@@ -46,6 +47,9 @@ struct Cli {
 enum Commands {
 	/// Lists all tracked branches.
 	List(CommonArgs),
+
+	/// Describes all tracked branches.
+	Describe(CommonArgs),
 }
 
 #[derive(Args)]
@@ -83,46 +87,129 @@ impl CommonArgs {
 fn main() {
 	let cli = Cli::parse();
 
+	match cli.command {
+		Commands::List(args) => list(&args),
+		Commands::Describe(args) => describe(&args),
+	}
+}
+
+fn list(args: &CommonArgs) {
 	let mut stdout = StandardStream::stdout(ColorChoice::Always);
 	let mut stderr = stderr();
 
-	match cli.command {
-		Commands::List(args) => {
-			let repo = args.repository().unwrap_or_else(|e| {
-				let _ = writeln!(stderr, "unable to open repository: {}", e.message());
+	let repo = args.repository().unwrap_or_else(|e| {
+		let _ = writeln!(stderr, "unable to open repository: {}", e.message());
+		exit(1)
+	});
+
+	let branch_current = git_utils::branch_current(&repo).unwrap_or_else(|e| {
+		let _ = writeln!(stderr, "unable to retrieve current branch: {}", e.message());
+		exit(1)
+	});
+
+	let mut branches = git_utils::branches(&repo).unwrap_or_else(|e| {
+		let _ = writeln!(stderr, "unable to get branches: {e}");
+		exit(1)
+	});
+
+	// TODO(TheSpiritXIII): natural sorting.
+	branches.sort();
+	for branch in branches {
+		if branch_current.is_some() && branch_current.unwrap() == branch.oid {
+			let _ = write!(stdout, "* ");
+			stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap_or_else(|e| {
+				let _ = writeln!(stderr, "unable to set color: {e}");
 				exit(1)
 			});
-
-			let branch_current = git_utils::branch_current(&repo).unwrap_or_else(|e| {
-				let _ = writeln!(stderr, "unable to retrieve current branch: {}", e.message());
-				exit(1)
-			});
-
-			let mut branches = git_utils::branches(&repo).unwrap_or_else(|e| {
-				let _ = writeln!(stderr, "{e}");
-				exit(1)
-			});
-
-			// TODO(TheSpiritXIII): natural sorting.
-			branches.sort();
-			for branch in branches {
-				if branch_current.is_some() && branch_current.unwrap() == branch.oid {
-					let _ = write!(stdout, "* ");
-					stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap_or_else(
-						|e| {
-							let _ = writeln!(stderr, "unable to set color: {e}");
-							exit(1)
-						},
-					)
-				} else {
-					let _ = write!(stdout, "  ");
-				}
-				let _ = writeln!(stdout, "{}", branch.name);
-				stdout.reset().unwrap_or_else(|e| {
-					let _ = writeln!(stderr, "unable to set color: {e}");
-					exit(1)
-				})
-			}
+		} else {
+			let _ = write!(stdout, "  ");
 		}
+		let _ = writeln!(stdout, "{}", branch.name);
+
+		stdout.reset().unwrap_or_else(|e| {
+			let _ = writeln!(stderr, "unable to set color: {e}");
+			exit(1)
+		});
+	}
+}
+
+fn describe(args: &CommonArgs) {
+	let mut stdout = StandardStream::stdout(ColorChoice::Always);
+	let mut stderr = stderr();
+
+	let repo = args.repository().unwrap_or_else(|e| {
+		let _ = writeln!(stderr, "unable to open repository: {}", e.message());
+		exit(1)
+	});
+
+	let branch_current = git_utils::branch_current(&repo).unwrap_or_else(|e| {
+		let _ = writeln!(stderr, "unable to retrieve current branch: {}", e.message());
+		exit(1)
+	});
+
+	let config = git_utils::config_open(args.path()).unwrap_or_else(|e| {
+		eprintln!("unable to read config: {}", e.message());
+		exit(1)
+	});
+
+	let branch_default_name = args.branch_default_name(&config).unwrap_or_else(|e| {
+		eprintln!("unable to get default branch name: {}", e.message());
+		exit(1)
+	});
+
+	let branch_default =
+		repo.find_branch(&branch_default_name, BranchType::Local).unwrap_or_else(|e| {
+			let _ = stdout.set_color(ColorSpec::new().set_fg(Some(Color::Yellow)));
+			let _ = writeln!(stdout, "hint: see git config init.defaultBranch");
+			eprintln!("unable to get default branch name: {}", e.message());
+			exit(1)
+		});
+
+	let mut branches = git_utils::branches(&repo).unwrap_or_else(|e| {
+		let _ = writeln!(stderr, "unable to get branches: {e}");
+		exit(1)
+	});
+
+	let tags = git_utils::tags(&repo).unwrap_or_else(|e| {
+		let _ = writeln!(stderr, "unable to get tags: {e}");
+		exit(1)
+	});
+
+	let reference_map = branches
+		.iter()
+		.map(|info| (info.oid, git_utils::ReferenceName::Branch(info.name.clone())))
+		.chain(tags.iter().map(|info| (info.oid, git_utils::ReferenceName::Tag(info.name.clone()))))
+		.collect();
+
+	// TODO(TheSpiritXIII): natural sorting.
+	branches.sort();
+	for branch in branches {
+		if branch.oid == branch_default.get().target().unwrap() {
+			continue;
+		}
+
+		if branch_current.is_some() && branch_current.unwrap() == branch.oid {
+			let _ = write!(stdout, "* ");
+			stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap_or_else(|e| {
+				let _ = writeln!(stderr, "unable to set color: {e}");
+				exit(1)
+			});
+		} else {
+			let _ = write!(stdout, "  ");
+		}
+		let _ = write!(stdout, "{} -> ", branch.name);
+
+		let parent = branch.parent(&repo, &reference_map).unwrap();
+		if parent.is_zero() {
+			let _ = writeln!(stdout);
+		} else {
+			let parent_name = reference_map.get(&parent).unwrap();
+			let _ = writeln!(stdout, "{parent_name}");
+		}
+
+		stdout.reset().unwrap_or_else(|e| {
+			let _ = writeln!(stderr, "unable to set color: {e}");
+			exit(1)
+		});
 	}
 }

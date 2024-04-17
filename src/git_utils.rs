@@ -1,12 +1,36 @@
 use core::str;
+use std::collections::HashMap;
+use std::fmt::Display;
 use std::path::Path;
 
 use git2::BranchType;
 use git2::Config;
 use git2::ConfigLevel;
 use git2::Oid;
+use git2::Repository;
 
 use crate::error;
+
+pub enum ReferenceName {
+	Branch(String),
+	Tag(String),
+}
+
+impl Display for ReferenceName {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			ReferenceName::Tag(tag) => {
+				f.write_str("refs/tags/")?;
+				f.write_str(tag)?;
+			}
+			ReferenceName::Branch(branch) => {
+				f.write_str("refs/heads/")?;
+				f.write_str(branch)?;
+			}
+		}
+		Ok(())
+	}
+}
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReferenceInfo {
@@ -27,6 +51,23 @@ impl ReferenceInfo {
 			}
 		})
 	}
+
+	pub fn parent(
+		&self,
+		repo: &Repository,
+		reference_map: &HashMap<Oid, ReferenceName>,
+	) -> Result<Oid, git2::Error> {
+		let mut revwalk = repo.revwalk()?;
+		revwalk.push(self.oid)?;
+		for commit in revwalk.skip(1) {
+			let oid = commit?;
+
+			if reference_map.get(&oid).is_some() {
+				return Ok(oid);
+			}
+		}
+		Ok(Oid::zero())
+	}
 }
 
 pub fn branches(repo: &git2::Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
@@ -37,6 +78,27 @@ pub fn branches(repo: &git2::Repository) -> Result<Vec<ReferenceInfo>, error::Er
 				.and_then(|branch| ReferenceInfo::from_branch(&branch.0))
 		})
 		.collect()
+}
+
+pub fn tags(repo: &Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
+	let mut tags = Vec::new();
+	let mut err: Option<error::Error> = None;
+	repo.tag_foreach(|oid, name_bytes| {
+		if err.is_some() {
+			return true;
+		}
+		match ReferenceInfo::from(oid, name_bytes) {
+			Ok(info) => {
+				tags.push(info);
+				true
+			}
+			Err(e) => {
+				err = Some(e);
+				false
+			}
+		}
+	})?;
+	err.map_or_else(|| Ok(tags), Err)
 }
 
 pub fn branch_current(repo: &git2::Repository) -> Result<Option<Oid>, git2::Error> {
