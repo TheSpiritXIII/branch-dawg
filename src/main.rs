@@ -16,7 +16,9 @@
 
 #![warn(clippy::pedantic)]
 
+use std::io::stderr;
 use std::io::Write;
+use std::process::exit;
 
 use clap::Args;
 use clap::Parser;
@@ -82,43 +84,44 @@ fn main() {
 	let cli = Cli::parse();
 
 	let mut stdout = StandardStream::stdout(ColorChoice::Always);
+	let mut stderr = stderr();
 
 	match cli.command {
 		Commands::List(args) => {
-			let repo = match args.repository() {
-				Ok(repo) => repo,
-				Err(e) => {
-					eprintln!("unable to open repository: {}", e.message());
-					return;
-				}
-			};
+			let repo = args.repository().unwrap_or_else(|e| {
+				let _ = writeln!(stderr, "unable to open repository: {}", e.message());
+				exit(1)
+			});
 
-			let branch_current = match git_utils::branch_current(&repo) {
-				Ok(config) => config,
-				Err(e) => {
-					eprintln!("unable to retrieve current branch: {}", e.message());
-					return;
-				}
-			};
+			let branch_current = git_utils::branch_current(&repo).unwrap_or_else(|e| {
+				let _ = writeln!(stderr, "unable to retrieve current branch: {}", e.message());
+				exit(1)
+			});
 
-			match git_utils::branches(&repo) {
-				Ok(mut branches) => {
-					// TODO(TheSpiritXIII): natural sorting.
-					branches.sort();
-					for branch in branches {
-						if branch_current.is_some() && branch_current.unwrap() == branch.oid {
-							write!(stdout, "* ").unwrap();
-							stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap();
-						} else {
-							write!(stdout, "  ").unwrap();
-						}
-						writeln!(stdout, "{}", branch.name).unwrap();
-						stdout.reset().unwrap();
-					}
+			let mut branches = git_utils::branches(&repo).unwrap_or_else(|e| {
+				let _ = writeln!(stderr, "{e}");
+				exit(1)
+			});
+
+			// TODO(TheSpiritXIII): natural sorting.
+			branches.sort();
+			for branch in branches {
+				if branch_current.is_some() && branch_current.unwrap() == branch.oid {
+					let _ = write!(stdout, "* ");
+					stdout.set_color(ColorSpec::new().set_fg(Some(Color::Green))).unwrap_or_else(
+						|e| {
+							let _ = writeln!(stderr, "unable to set color: {e}");
+							exit(1)
+						},
+					)
+				} else {
+					let _ = write!(stdout, "  ");
 				}
-				Err(e) => {
-					eprintln!("{e}");
-				}
+				let _ = writeln!(stdout, "{}", branch.name);
+				stdout.reset().unwrap_or_else(|e| {
+					let _ = writeln!(stderr, "unable to set color: {e}");
+					exit(1)
+				})
 			}
 		}
 	}

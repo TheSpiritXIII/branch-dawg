@@ -9,24 +9,32 @@ use git2::Oid;
 use crate::error;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
-pub struct Branch {
+pub struct ReferenceInfo {
 	pub name: String,
 	pub oid: Oid,
 }
 
-pub fn branches(repo: &git2::Repository) -> Result<Vec<Branch>, error::Error> {
+impl ReferenceInfo {
+	fn from_branch(branch: &git2::Branch) -> Result<Self, error::Error> {
+		Self::from(branch.get().target().unwrap(), branch.name_bytes()?)
+	}
+
+	fn from(oid: Oid, name_bytes: &[u8]) -> Result<Self, error::Error> {
+		str::from_utf8(name_bytes).map_err(error::Error::from).map(|name| {
+			Self {
+				name: name.to_owned(),
+				oid,
+			}
+		})
+	}
+}
+
+pub fn branches(repo: &git2::Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
 	repo.branches(Some(BranchType::Local))?
 		.map(|branch_result| {
-			branch_result.map_err(error::Error::from).and_then(|branch| {
-				return branch.0.name_bytes().map_err(error::Error::from).and_then(|name| {
-					str::from_utf8(name).map_err(error::Error::from).map(|name| {
-						Branch {
-							name: name.to_owned(),
-							oid: branch.0.get().target().unwrap(),
-						}
-					})
-				});
-			})
+			branch_result
+				.map_err(error::Error::from)
+				.and_then(|branch| ReferenceInfo::from_branch(&branch.0))
 		})
 		.collect()
 }
