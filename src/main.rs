@@ -16,6 +16,7 @@
 
 #![warn(clippy::pedantic)]
 
+use std::collections::HashMap;
 use std::io::stderr;
 use std::io::Write;
 use std::process::exit;
@@ -25,6 +26,8 @@ use clap::Parser;
 use clap::Subcommand;
 use git2::BranchType;
 use git2::Config;
+use git2::Oid;
+use git2::Reference;
 use git2::Repository;
 use termcolor::Color;
 use termcolor::ColorChoice;
@@ -165,6 +168,18 @@ fn describe(args: &CommonArgs) {
 			exit(1)
 		});
 
+	let branch_default_oid = git_utils::branch_oid(&branch_default);
+	let branch_default_commits: HashMap<Oid, usize> =
+		git_utils::commits_since(&repo, branch_default_oid)
+			.unwrap_or_else(|e| {
+				eprintln!("unable to get default branch commits: {}", e.message());
+				exit(1)
+			})
+			.iter()
+			.enumerate()
+			.map(|(i, v)| (v.clone(), i))
+			.collect();
+
 	let mut branches = git_utils::branches(&repo).unwrap_or_else(|e| {
 		let _ = writeln!(stderr, "unable to get branches: {e}");
 		exit(1)
@@ -203,8 +218,26 @@ fn describe(args: &CommonArgs) {
 		if parent.is_zero() {
 			let _ = writeln!(stdout);
 		} else {
-			let parent_name = reference_map.get(&parent).unwrap();
-			let _ = writeln!(stdout, "{parent_name}");
+			let main_commit = if branch_default_commits.contains_key(&parent) {
+				if branch.oid == parent {
+					Some(parent)
+				} else {
+					git_utils::commits_to(&repo, branch.oid, parent)
+						.unwrap()
+						.iter()
+						.find(|commit| branch_default_commits.contains_key(commit))
+						.cloned()
+						.or(Some(parent))
+				}
+			} else {
+				None
+			};
+			if let Some(commit) = main_commit {
+				let _ = writeln!(stdout, "refs/heads/{branch_default_name} (detached {commit})");
+			} else {
+				let parent_name = reference_map.get(&parent).unwrap();
+				let _ = writeln!(stdout, "{parent_name} ({parent})");
+			}
 		}
 
 		stdout.reset().unwrap_or_else(|e| {

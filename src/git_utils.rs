@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fmt::Display;
 use std::path::Path;
 
+use git2::Branch;
 use git2::BranchType;
 use git2::Config;
 use git2::ConfigLevel;
@@ -40,15 +41,13 @@ pub struct ReferenceInfo {
 
 impl ReferenceInfo {
 	fn from_branch(branch: &git2::Branch) -> Result<Self, error::Error> {
-		Self::from(branch.get().target().unwrap(), branch.name_bytes()?)
+		Self::from(branch_oid(branch), branch.name_bytes()?)
 	}
 
 	fn from(oid: Oid, name_bytes: &[u8]) -> Result<Self, error::Error> {
-		str::from_utf8(name_bytes).map_err(error::Error::from).map(|name| {
-			Self {
-				name: name.to_owned(),
-				oid,
-			}
+		str::from_utf8(name_bytes).map_err(error::Error::from).map(|name| Self {
+			name: name.to_owned(),
+			oid,
 		})
 	}
 
@@ -68,6 +67,10 @@ impl ReferenceInfo {
 		}
 		Ok(Oid::zero())
 	}
+}
+
+pub fn branch_oid(branch: &git2::Branch) -> Oid {
+	branch.get().target().unwrap()
 }
 
 pub fn branches(repo: &git2::Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
@@ -127,4 +130,16 @@ pub fn config_open(path: impl AsRef<Path>) -> Result<Config, git2::Error> {
 		config.add_file(&path_found, ConfigLevel::XDG, true)?;
 	}
 	config.snapshot()
+}
+
+pub fn commits_since(repo: &Repository, oid: Oid) -> Result<Vec<Oid>, git2::Error> {
+	let mut revwalk = repo.revwalk()?;
+	revwalk.push(oid)?;
+	revwalk.skip(1).collect()
+}
+
+pub fn commits_to(repo: &Repository, oid_from: Oid, oid_to: Oid) -> Result<Vec<Oid>, git2::Error> {
+	let mut revwalk = repo.revwalk()?;
+	revwalk.push(oid_from)?;
+	revwalk.skip(1).take_while(|oid| oid.is_ok() && *oid.as_ref().unwrap() != oid_to).collect()
 }
