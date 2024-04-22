@@ -27,7 +27,6 @@ use clap::Subcommand;
 use git2::BranchType;
 use git2::Config;
 use git2::Oid;
-use git2::Reference;
 use git2::Repository;
 use termcolor::Color;
 use termcolor::ColorChoice;
@@ -177,7 +176,7 @@ fn describe(args: &CommonArgs) {
 			})
 			.iter()
 			.enumerate()
-			.map(|(i, v)| (v.clone(), i))
+			.map(|(i, v)| (*v, i))
 			.collect();
 
 	let mut branches = git_utils::branches(&repo).unwrap_or_else(|e| {
@@ -226,7 +225,7 @@ fn describe(args: &CommonArgs) {
 						.unwrap()
 						.iter()
 						.find(|commit| branch_default_commits.contains_key(commit))
-						.cloned()
+						.copied()
 						.or(Some(parent))
 				}
 			} else {

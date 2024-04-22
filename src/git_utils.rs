@@ -40,14 +40,16 @@ pub struct ReferenceInfo {
 }
 
 impl ReferenceInfo {
-	fn from_branch(branch: &git2::Branch) -> Result<Self, error::Error> {
+	fn from_branch(branch: &Branch) -> Result<Self, error::Error> {
 		Self::from(branch_oid(branch), branch.name_bytes()?)
 	}
 
 	fn from(oid: Oid, name_bytes: &[u8]) -> Result<Self, error::Error> {
-		str::from_utf8(name_bytes).map_err(error::Error::from).map(|name| Self {
-			name: name.to_owned(),
-			oid,
+		str::from_utf8(name_bytes).map_err(error::Error::from).map(|name| {
+			Self {
+				name: name.to_owned(),
+				oid,
+			}
 		})
 	}
 
@@ -69,11 +71,11 @@ impl ReferenceInfo {
 	}
 }
 
-pub fn branch_oid(branch: &git2::Branch) -> Oid {
+pub fn branch_oid(branch: &Branch) -> Oid {
 	branch.get().target().unwrap()
 }
 
-pub fn branches(repo: &git2::Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
+pub fn branches(repo: &Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
 	repo.branches(Some(BranchType::Local))?
 		.map(|branch_result| {
 			branch_result
@@ -104,7 +106,7 @@ pub fn tags(repo: &Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
 	err.map_or_else(|| Ok(tags), Err)
 }
 
-pub fn branch_current(repo: &git2::Repository) -> Result<Option<Oid>, git2::Error> {
+pub fn branch_current(repo: &Repository) -> Result<Option<Oid>, git2::Error> {
 	let head = repo.head()?;
 	head.is_branch()
 		.then(|| head.resolve())
