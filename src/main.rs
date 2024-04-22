@@ -109,13 +109,11 @@ fn list(args: &CommonArgs) {
 		exit(1)
 	});
 
-	let mut branches = git_utils::branches(&repo).unwrap_or_else(|e| {
+	let branches = git_utils::branches(&repo).unwrap_or_else(|e| {
 		let _ = writeln!(stderr, "unable to get branches: {e}");
 		exit(1)
 	});
 
-	// TODO(TheSpiritXIII): natural sorting.
-	branches.sort();
 	for branch in branches {
 		if branch_current.is_some() && branch_current.unwrap() == branch.oid {
 			let _ = write!(stdout, "* ");
@@ -179,7 +177,7 @@ fn describe(args: &CommonArgs) {
 			.map(|(i, v)| (*v, i))
 			.collect();
 
-	let mut branches = git_utils::branches(&repo).unwrap_or_else(|e| {
+	let branches = git_utils::branches(&repo).unwrap_or_else(|e| {
 		let _ = writeln!(stderr, "unable to get branches: {e}");
 		exit(1)
 	});
@@ -195,8 +193,6 @@ fn describe(args: &CommonArgs) {
 		.chain(tags.iter().map(|info| (info.oid, git_utils::ReferenceName::Tag(info.name.clone()))))
 		.collect();
 
-	// TODO(TheSpiritXIII): natural sorting.
-	branches.sort();
 	for branch in branches {
 		if branch.oid == branch_default.get().target().unwrap() {
 			continue;

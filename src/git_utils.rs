@@ -76,13 +76,18 @@ pub fn branch_oid(branch: &Branch) -> Oid {
 }
 
 pub fn branches(repo: &Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
-	repo.branches(Some(BranchType::Local))?
+	let mut branch_list = repo
+		.branches(Some(BranchType::Local))?
 		.map(|branch_result| {
 			branch_result
 				.map_err(error::Error::from)
 				.and_then(|branch| ReferenceInfo::from_branch(&branch.0))
 		})
-		.collect()
+		.collect::<Result<Vec<_>, error::Error>>()?;
+
+	// TODO(TheSpiritXIII): natural sorting.
+	branch_list.sort();
+	Ok(branch_list)
 }
 
 pub fn tags(repo: &Repository) -> Result<Vec<ReferenceInfo>, error::Error> {
